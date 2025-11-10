@@ -1,37 +1,92 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://github.com/vercel/next.js/tree/canary/packages/create-next-app).
+# Stock Radar Frontend (Next.js)
+
+This is the frontend for **Stock Radar / SignalRadar**, a momentum and signal screener for stocks.
+
+- Built with **Next.js (App Router)** and **React**
+- Styled with **Tailwind CSS**
+- Uses **Chart.js** for per-ticker price charts
+- Connects to a FastAPI backend for signal and history data
+
+---
 
 ## Getting Started
 
-First, run the development server:
+From the repo root:
 
 ```bash
+cd frontend
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Then open your browser at:  
+👉 http://localhost:3000
 
-You can start editing the page by modifying `app/page.js`. The page auto-updates as you edit the file.
+Make sure your backend (FastAPI) server is running at http://127.0.0.1:8000 before starting.
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+---
 
-## Learn More
+## Configuration
 
-To learn more about Next.js, take a look at the following resources:
+If your backend runs on a different URL, create a file named `.env.local` in the `frontend/` folder:
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+```env
+NEXT_PUBLIC_API_BASE=http://127.0.0.1:8000
+```
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+---
 
-## Deploy on Vercel
+## Key Features
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+- **Signal Screener Dashboard**  
+  Displays top-ranked tickers with technical indicators and tags (Bullish Momentum, Strong Uptrend, etc.)
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
-# Stock-Radar-App
+- **Custom Filters**  
+  Adjust minimum score, RSI range, and filter by trend.
+
+- **Interactive Charts**  
+  View recent price history for each ticker in a modal window.
+
+- **Custom Ticker Universe**  
+  Paste any set of tickers (comma or space-separated) to analyze your own list.
+
+---
+
+## Project Structure
+
+```bash
+frontend/
+├── src/app/
+│   ├── page.js        # Main dashboard UI
+│   ├── layout.js      # Root layout
+│   ├── globals.css    # Global styles
+│   └── favicon.ico
+├── public/            # Static assets (logos, icons)
+├── package.json       # Dependencies
+├── next.config.mjs    # Next.js configuration
+├── postcss.config.mjs # PostCSS / Tailwind config
+├── eslint.config.mjs  # ESLint configuration
+└── .gitignore
+```
+
+---
+
+## Tech Stack
+
+- **Framework:** Next.js 14 (React)
+- **Styling:** Tailwind CSS
+- **Charts:** Chart.js / react-chartjs-2
+- **Language:** JavaScript (ES6+)
+
+---
+
+## Commands
+
+```bash
+npm run dev      # Start development server
+npm run build    # Build for production
+npm run start    # Start production build
+npm run lint     # Run ESLint checks
+```
+
+---

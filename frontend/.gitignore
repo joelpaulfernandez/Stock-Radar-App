@@ -1,46 +1,37 @@
-# Python bytecode / cache
-__pycache__/
-*.py[cod]
-*$py.class
+# Dependencies
+/node_modules
 
-# Virtual environments
-.venv/
-env/
-venv/
-ENV/
-env.bak/
-
-# macOS system files
-.DS_Store
-
-# IDE and editor configs
-.vscode/
-.idea/
-*.swp
-
-# Logs and debug files
-*.log
-*.out
-
-# Pytest / coverage
-.coverage
-htmlcov/
-.cache/
-pytest_cache/
-
-# Build / dist
-build/
-dist/
-*.egg-info/
-.eggs/
+# Build output
+/.next
+/out
+/build
 
 # Environment variables
 .env
 .env.*
-*.env
+*.env.local
 
-# Uvicorn / FastAPI specific
-*.pid
-*.db
-*.sqlite3
-node_modules
+# Logs
+npm-debug.log*
+yarn-debug.log*
+pnpm-debug.log*
+
+# macOS system files
+.DS_Store
+
+# Editor directories and files
+.vscode/
+.idea/
+*.swp
+
+# Optional cache directories
+/.turbo
+/.vercel
+.next/
+dist/
+
+# TypeScript
+*.tsbuildinfo
+
+# ESLint cache
+.eslintcache
