@@ -135,6 +135,23 @@ def get_history(
     }
 
 
+@app.get("/debug/{ticker}")
+def debug_ticker(ticker: str):
+    symbol = ticker.upper()
+    try:
+        t = yf.Ticker(symbol)
+        df = t.history(period="5d", interval="1d", auto_adjust=False)
+        return {
+            "ticker": symbol,
+            "empty": df.empty,
+            "rows": len(df),
+            "columns": list(df.columns),
+            "sample": df.tail(2).to_dict() if not df.empty else {},
+        }
+    except Exception as e:
+        return {"ticker": symbol, "error": str(e)}
+
+
 @app.get("/")
 def root():
     return {
