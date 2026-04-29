@@ -1,3 +1,4 @@
+import os
 from typing import List, Optional
 import yfinance as yf
 
@@ -14,9 +15,12 @@ app = FastAPI(
 )
 
 # Allow frontend apps (e.g., Next.js) to call this API from localhost later
+_raw_origins = os.getenv("ALLOWED_ORIGINS", "*")
+_origins = ["*"] if _raw_origins == "*" else [o.strip() for o in _raw_origins.split(",")]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # you can lock this down later
+    allow_origins=_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

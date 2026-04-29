@@ -1,0 +1,11 @@
+services:
+  - type: web
+    name: signalradar-api
+    runtime: python
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn signalradar_api:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: ALLOWED_ORIGINS
+        value: "*"
+    plan: free
