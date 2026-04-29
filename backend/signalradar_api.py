@@ -1,32 +1,21 @@
 import os
 from typing import List, Optional
-import yfinance as yf
+
 import requests
-
-_session = requests.Session()
-_session.headers.update({
-    "User-Agent": (
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-        "AppleWebKit/537.36 (KHTML, like Gecko) "
-        "Chrome/124.0.0.0 Safari/537.36"
-    ),
-    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-    "Accept-Language": "en-US,en;q=0.5",
-})
-
 from fastapi import FastAPI, Query
 from fastapi.middleware.cors import CORSMiddleware
 
-# Import your core logic from signalradar.py
-from signalradar import run_screener, DEFAULT_TICKERS, fetch_history
+from signalradar import run_screener, DEFAULT_TICKERS, fetch_history, _session
+
+TWELVE_DATA_API_KEY = os.getenv("TWELVE_DATA_API_KEY", "")
+_TWELVE_BASE = "https://api.twelvedata.com"
 
 app = FastAPI(
     title="SignalRadar API",
     description="Momentum & signal screener for stocks",
-    version="0.1.0",
+    version="0.2.0",
 )
 
-# Allow frontend apps (e.g., Next.js) to call this API from localhost later
 _raw_origins = os.getenv("ALLOWED_ORIGINS", "*")
 _origins = ["*"] if _raw_origins == "*" else [o.strip() for o in _raw_origins.split(",")]
 
@@ -41,132 +30,65 @@ app.add_middleware(
 
 @app.get("/signals")
 def get_signals(
-    tickers: Optional[str] = Query(
-        None,
-        description="Comma-separated list of tickers. If omitted, uses default large caps.",
-        example="AAPL,MSFT,NVDA,TSLA",
-    ),
-    days: int = Query(
-        365,
-        ge=60,
-        le=2000,
-        description="Number of days of history to use (must be >= 60 for indicators).",
-    ),
-    limit: int = Query(
-        15,
-        ge=1,
-        le=100,
-        description="How many top signals to return.",
-    ),
+    tickers: Optional[str] = Query(None, description="Comma-separated tickers. Omit for default large caps."),
+    days: int = Query(365, ge=60, le=2000),
+    limit: int = Query(15, ge=1, le=100),
 ):
-    """
-    Returns top momentum / signal stocks based on your scoring engine.
-    """
-
-    # Use provided tickers or fall back to default large caps
-    if tickers:
-        tickers_list: List[str] = [
-            t.strip().upper() for t in tickers.split(",") if t.strip()
-        ]
-    else:
-        tickers_list = DEFAULT_TICKERS
-
-    results = run_screener(
-        tickers=tickers_list,
-        days=days,
-        limit=limit,
+    tickers_list: List[str] = (
+        [t.strip().upper() for t in tickers.split(",") if t.strip()]
+        if tickers
+        else DEFAULT_TICKERS
     )
-
-    return {
-        "count": len(results),
-        "tickers": tickers_list,
-        "days": days,
-        "limit": limit,
-        "results": results,
-    }
+    results = run_screener(tickers=tickers_list, days=days, limit=limit)
+    return {"count": len(results), "tickers": tickers_list, "days": days, "limit": limit, "results": results}
 
 
 @app.get("/history/{ticker}")
 def get_history(
     ticker: str,
-    days: int = Query(
-        120,
-        ge=30,
-        le=730,
-        description="Number of days of history to return for this ticker.",
-    ),
+    days: int = Query(120, ge=30, le=730),
 ):
-    """
-    Return recent daily close prices for a single ticker,
-    for use in charts / sparklines.
-
-    Uses a lightweight yfinance history call instead of fetch_history,
-    so it does not depend on indicator columns or 200-day lookback.
-    """
     symbol = ticker.upper()
     try:
-        t = yf.Ticker(symbol, session=_session)
-        df = t.history(
-            period=f"{days}d",
-            interval="1d",
-            auto_adjust=False,
+        resp = _session.get(
+            f"{_TWELVE_BASE}/time_series",
+            params={
+                "symbol": symbol,
+                "interval": "1day",
+                "outputsize": min(days, 5000),
+                "apikey": TWELVE_DATA_API_KEY,
+            },
+            timeout=15,
         )
+        data = resp.json()
     except Exception as e:
         print(f"[WARN] history error for {symbol}: {e}")
-        return {
-            "ticker": symbol,
-            "days": days,
-            "points": [],
-        }
+        return {"ticker": symbol, "days": days, "points": []}
 
-    if df.empty:
-        return {
-            "ticker": symbol,
-            "days": days,
-            "points": [],
-        }
+    if data.get("status") == "error" or "values" not in data:
+        return {"ticker": symbol, "days": days, "points": []}
 
-    # Keep only rows with a closing price
-    df = df.dropna(subset=["Close"])
-
-    # Take at most the last 60 points for the chart
-    df_tail = df.tail(60)
-
-    points = [
-        {
-            "date": idx.strftime("%Y-%m-%d"),
-            "close": float(row["Close"]),
-        }
-        for idx, row in df_tail.iterrows()
-    ]
-
-    return {
-        "ticker": symbol,
-        "days": days,
-        "points": points,
-    }
+    values = sorted(data["values"], key=lambda x: x["datetime"])
+    points = [{"date": v["datetime"][:10], "close": float(v["close"])} for v in values[-60:]]
+    return {"ticker": symbol, "days": days, "points": points}
 
 
 @app.get("/debug/{ticker}")
 def debug_ticker(ticker: str):
     symbol = ticker.upper()
     try:
-        t = yf.Ticker(symbol, session=_session)
-        df = t.history(period="5d", interval="1d", auto_adjust=False)
-        return {
-            "ticker": symbol,
-            "empty": df.empty,
-            "rows": len(df),
-            "columns": list(df.columns),
-            "sample": df.tail(2).to_dict() if not df.empty else {},
-        }
+        resp = _session.get(
+            f"{_TWELVE_BASE}/time_series",
+            params={"symbol": symbol, "interval": "1day", "outputsize": 5, "apikey": TWELVE_DATA_API_KEY},
+            timeout=15,
+        )
+        data = resp.json()
+        return {"ticker": symbol, "status": data.get("status"), "has_values": "values" in data,
+                "rows": len(data.get("values", [])), "sample": data.get("values", [])[:2]}
     except Exception as e:
         return {"ticker": symbol, "error": str(e)}
 
 
 @app.get("/")
 def root():
-    return {
-        "message": "Welcome to SignalRadar API",
-        "endpoints": ["/signals"],
-    }
+    return {"message": "Welcome to SignalRadar API", "endpoints": ["/signals", "/history/{ticker}"]}
