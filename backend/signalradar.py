@@ -1,6 +1,18 @@
+import requests
 import pandas as pd
 import numpy as np
 import yfinance as yf
+
+_session = requests.Session()
+_session.headers.update({
+    "User-Agent": (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Chrome/124.0.0.0 Safari/537.36"
+    ),
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept-Language": "en-US,en;q=0.5",
+})
 
 def fetch_history(ticker: str, days: int = 180) -> pd.DataFrame:
     """
@@ -11,7 +23,7 @@ def fetch_history(ticker: str, days: int = 180) -> pd.DataFrame:
     """
     # Use Ticker().history to get a single-symbol DataFrame
     try:
-        t = yf.Ticker(ticker)
+        t = yf.Ticker(ticker, session=_session)
         df = t.history(
             period=f"{days}d",
             interval="1d",
@@ -224,7 +236,7 @@ def fetch_history(ticker: str, days: int = 180) -> pd.DataFrame:
     column issues some yfinance versions have.
     """
     try:
-        t = yf.Ticker(ticker)
+        t = yf.Ticker(ticker, session=_session)
         df = t.history(
             period=f"{days}d",
             interval="1d",
