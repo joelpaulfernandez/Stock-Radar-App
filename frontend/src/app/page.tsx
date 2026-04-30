@@ -12,37 +12,72 @@ import {
 } from "chart.js";
 import { Line } from "react-chartjs-2";
 
-ChartJS.register(
-  CategoryScale,
-  LinearScale,
-  PointElement,
-  LineElement,
-  Tooltip,
-  Legend
-);
+ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Tooltip, Legend);
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "http://127.0.0.1:8000";
 
+// --- Types ---
+
+interface SignalResult {
+  ticker: string;
+  close: number;
+  rsi: number;
+  vol_ratio: number;
+  atr_pct: number;
+  ret_5d: number;
+  ret_20d: number;
+  score: number;
+  tags: string[];
+  notes: string;
+}
+
+interface SignalsResponse {
+  count: number;
+  tickers: string[];
+  days: number;
+  limit: number;
+  results: SignalResult[];
+}
+
+interface HistoryPoint {
+  date: string;
+  close: number;
+}
+
+interface HistoryResponse {
+  ticker: string;
+  days: number;
+  points: HistoryPoint[];
+}
+
+// --- Helpers ---
+
+const formatPct = (v: number | null | undefined): string =>
+  v == null ? "-" : `${(v * 100).toFixed(2)}%`;
+
+const formatNum = (v: number | null | undefined, digits = 2): string =>
+  v == null ? "-" : v.toFixed(digits);
+
+// --- Component ---
+
 export default function Home() {
-  const [data, setData] = useState(null);
+  const [data, setData] = useState<SignalsResponse | null>(null);
   const [limit, setLimit] = useState(15);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [refreshKey, setRefreshKey] = useState(0);
+  const [tickersText, setTickersText] = useState("");
 
-  // filters
   const [minScore, setMinScore] = useState(0);
   const [rsiMin, setRsiMin] = useState(0);
   const [rsiMax, setRsiMax] = useState(100);
   const [requireBullish, setRequireBullish] = useState(false);
   const [requireUptrend, setRequireUptrend] = useState(false);
 
-  // chart modal state
-  const [selectedTicker, setSelectedTicker] = useState(null);
-  const [history, setHistory] = useState(null);
+  const [selectedTicker, setSelectedTicker] = useState<string | null>(null);
+  const [history, setHistory] = useState<HistoryResponse | null>(null);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historyError, setHistoryError] = useState("");
-  const [tickersText, setTickersText] = useState("");
 
   useEffect(() => {
     async function fetchSignals() {
@@ -50,7 +85,6 @@ export default function Home() {
         setLoading(true);
         setError("");
         let url = `${API_BASE}/signals?limit=${limit}`;
-
         if (tickersText.trim()) {
           const normalized = tickersText
             .split(/[,\s]+/)
@@ -59,65 +93,42 @@ export default function Home() {
             .join(",");
           url += `&tickers=${encodeURIComponent(normalized)}`;
         }
-
         const res = await fetch(url);
-        if (!res.ok) {
-          throw new Error(`API error: ${res.status}`);
-        }
-        const json = await res.json();
+        if (!res.ok) throw new Error(`API error: ${res.status}`);
+        const json: SignalsResponse = await res.json();
         setData(json);
       } catch (err) {
-        console.error(err);
-        setError(err.message || "Failed to load signals");
+        setError(err instanceof Error ? err.message : "Failed to load signals");
       } finally {
         setLoading(false);
       }
     }
-
     fetchSignals();
   }, [limit, refreshKey]);
 
-  const handleRefresh = () => {
-    setRefreshKey((k) => k + 1);
-  };
+  const filteredResults: SignalResult[] =
+    data?.results.filter((row) => {
+      const rsi = row.rsi ?? 0;
+      const score = row.score ?? 0;
+      if (score < minScore) return false;
+      if (rsi < rsiMin || rsi > rsiMax) return false;
+      if (requireBullish && !row.tags.includes("Bullish Momentum")) return false;
+      if (requireUptrend && !row.tags.includes("Strong Uptrend")) return false;
+      return true;
+    }) ?? [];
 
-  const formatPct = (v) =>
-    v === null || v === undefined ? "-" : `${(v * 100).toFixed(2)}%`;
-
-  const formatNum = (v, digits = 2) =>
-    v === null || v === undefined ? "-" : v.toFixed(digits);
-
-  const filteredResults =
-    data && data.results
-      ? data.results.filter((row) => {
-          const rsi = row.rsi ?? 0;
-          const score = row.score ?? 0;
-          const tags = row.tags || [];
-
-          if (score < minScore) return false;
-          if (rsi < rsiMin || rsi > rsiMax) return false;
-          if (requireBullish && !tags.includes("Bullish Momentum")) return false;
-          if (requireUptrend && !tags.includes("Strong Uptrend")) return false;
-
-          return true;
-        })
-      : [];
-
-  const openChart = async (ticker) => {
+  const openChart = async (ticker: string) => {
     setSelectedTicker(ticker);
     setHistory(null);
     setHistoryError("");
     setHistoryLoading(true);
     try {
       const res = await fetch(`${API_BASE}/history/${ticker}?days=120`);
-      if (!res.ok) {
-        throw new Error(`Failed to load history (${res.status})`);
-      }
-      const json = await res.json();
+      if (!res.ok) throw new Error(`Failed to load history (${res.status})`);
+      const json: HistoryResponse = await res.json();
       setHistory(json);
     } catch (e) {
-      console.error(e);
-      setHistoryError(e.message || "Error loading history");
+      setHistoryError(e instanceof Error ? e.message : "Error loading history");
     } finally {
       setHistoryLoading(false);
     }
@@ -135,9 +146,7 @@ export default function Home() {
         <header className="mb-6">
           <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
             <div>
-              <h1 className="text-3xl font-semibold tracking-tight">
-                SignalRadar
-              </h1>
+              <h1 className="text-3xl font-semibold tracking-tight">SignalRadar</h1>
               <p className="text-slate-400 mt-1">
                 Momentum &amp; volatility screener powered by your FastAPI backend.
               </p>
@@ -157,18 +166,15 @@ export default function Home() {
                   max={50}
                   value={limit}
                   onChange={(e) =>
-                    setLimit(
-                      Math.min(50, Math.max(1, Number(e.target.value) || 1))
-                    )
+                    setLimit(Math.min(50, Math.max(1, Number(e.target.value) || 1)))
                   }
                   className="w-20 rounded-md bg-slate-900 border border-slate-700 px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
                 />
               </label>
-
               <button
-                onClick={handleRefresh}
-                className="inline-flex items-center rounded-md bg-emerald-500 px-3 py-1.5 text-sm font-medium text-slate-950 hover:bg-emerald-400 focus:outline-none focus:ring-2 focus:ring-emerald-500 disabled:opacity-60"
+                onClick={() => setRefreshKey((k) => k + 1)}
                 disabled={loading}
+                className="inline-flex items-center rounded-md bg-emerald-500 px-3 py-1.5 text-sm font-medium text-slate-950 hover:bg-emerald-400 focus:outline-none focus:ring-2 focus:ring-emerald-500 disabled:opacity-60"
               >
                 {loading ? "Refreshing..." : "Refresh"}
               </button>
@@ -181,9 +187,7 @@ export default function Home() {
               <input
                 type="number"
                 value={minScore}
-                onChange={(e) =>
-                  setMinScore(Number(e.target.value) || 0)
-                }
+                onChange={(e) => setMinScore(Number(e.target.value) || 0)}
                 className="w-20 rounded-md bg-slate-900 border border-slate-700 px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
               />
             </label>
@@ -194,9 +198,7 @@ export default function Home() {
                 type="number"
                 value={rsiMin}
                 onChange={(e) =>
-                  setRsiMin(
-                    Math.min(100, Math.max(0, Number(e.target.value) || 0))
-                  )
+                  setRsiMin(Math.min(100, Math.max(0, Number(e.target.value) || 0)))
                 }
                 className="w-16 rounded-md bg-slate-900 border border-slate-700 px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
               />
@@ -205,9 +207,7 @@ export default function Home() {
                 type="number"
                 value={rsiMax}
                 onChange={(e) =>
-                  setRsiMax(
-                    Math.min(100, Math.max(0, Number(e.target.value) || 100))
-                  )
+                  setRsiMax(Math.min(100, Math.max(0, Number(e.target.value) || 100)))
                 }
                 className="w-16 rounded-md bg-slate-900 border border-slate-700 px-2 py-1 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
               />
@@ -234,9 +234,7 @@ export default function Home() {
             </label>
 
             <div className="mt-4 text-sm text-slate-300 w-full max-w-xl">
-              <label className="block mb-1">
-                Custom tickers (comma or space separated)
-              </label>
+              <label className="block mb-1">Custom tickers (comma or space separated)</label>
               <textarea
                 value={tickersText}
                 onChange={(e) => setTickersText(e.target.value)}
@@ -247,7 +245,7 @@ export default function Home() {
               <p className="mt-1 text-xs text-slate-500">
                 Leave blank to use the default large-cap universe.
               </p>
-          </div>
+            </div>
           </div>
         </header>
 
@@ -258,116 +256,70 @@ export default function Home() {
         )}
 
         {!data && !loading && !error && (
-          <p className="text-sm text-slate-400">
-            No data yet. Click <span className="font-semibold">Refresh</span> to
-            load signals.
-          </p>
+          <p className="text-sm text-slate-400">No data yet. Click Refresh to load signals.</p>
         )}
 
-        {loading && (
-          <p className="text-sm text-slate-400 mb-3">Loading signals…</p>
-        )}
+        {loading && <p className="text-sm text-slate-400 mb-3">Loading signals…</p>}
 
         {data && filteredResults.length > 0 && (
           <div className="overflow-x-auto rounded-xl border border-slate-800 bg-slate-900/40 shadow-lg shadow-emerald-500/5">
             <table className="min-w-full text-sm">
               <thead>
                 <tr className="bg-slate-900/70 border-b border-slate-800">
-                  <th className="px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-slate-400">
-                    Rank
-                  </th>
-                  <th className="px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-slate-200">
-                    Ticker
-                  </th>
-                  <th className="px-3 py-2 text-right text-xs font-semibold uppercase tracking-wide text-slate-400">
-                    Score
-                  </th>
-                  <th className="px-3 py-2 text-right text-xs font-semibold uppercase tracking-wide text-slate-400">
-                    Price
-                  </th>
-                  <th className="px-3 py-2 text-right text-xs font-semibold uppercase tracking-wide text-slate-400">
-                    RSI
-                  </th>
-                  <th className="px-3 py-2 text-right text-xs font-semibold uppercase tracking-wide text-slate-400">
-                    Vol xAvg
-                  </th>
-                  <th className="px-3 py-2 text-right text-xs font-semibold uppercase tracking-wide text-slate-400">
-                    ATR%
-                  </th>
-                  <th className="px-3 py-2 text-right text-xs font-semibold uppercase tracking-wide text-slate-400">
-                    5d %
-                  </th>
-                  <th className="px-3 py-2 text-right text-xs font-semibold uppercase tracking-wide text-slate-400">
-                    20d %
-                  </th>
-                  <th className="px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-slate-400">
-                    Tags
-                  </th>
-                  <th className="px-3 py-2 text-right text-xs font-semibold uppercase tracking-wide text-slate-400">
-                    Chart
-                  </th>
+                  {["Rank", "Ticker", "Score", "Price", "RSI", "Vol xAvg", "ATR%", "5d %", "20d %", "Tags", "Chart"].map(
+                    (h, i) => (
+                      <th
+                        key={h}
+                        className={`px-3 py-2 text-xs font-semibold uppercase tracking-wide ${
+                          i === 0 || i === 1 || i === 9 || i === 10
+                            ? "text-left text-slate-400"
+                            : "text-right text-slate-400"
+                        } ${i === 1 ? "text-slate-200" : ""}`}
+                      >
+                        {h}
+                      </th>
+                    )
+                  )}
                 </tr>
               </thead>
               <tbody>
                 {filteredResults.map((row, idx) => (
-                  <tr
-                    key={row.ticker}
-                    className="border-t border-slate-800/70 hover:bg-slate-900/70"
-                  >
-                    <td className="px-3 py-2 text-xs text-slate-500">
-                      {idx + 1}
-                    </td>
-                    <td className="px-3 py-2 font-semibold text-slate-100">
-                      {row.ticker}
-                    </td>
+                  <tr key={row.ticker} className="border-t border-slate-800/70 hover:bg-slate-900/70">
+                    <td className="px-3 py-2 text-xs text-slate-500">{idx + 1}</td>
+                    <td className="px-3 py-2 font-semibold text-slate-100">{row.ticker}</td>
                     <td className="px-3 py-2 text-right font-semibold text-emerald-400">
                       {formatNum(row.score, 1)}
                     </td>
-                    <td className="px-3 py-2 text-right text-slate-200">
-                      ${formatNum(row.close, 2)}
-                    </td>
-                    <td className="px-3 py-2 text-right">
-                      {formatNum(row.rsi, 1)}
-                    </td>
-                    <td className="px-3 py-2 text-right">
-                      {formatNum(row.vol_ratio, 2)}x
-                    </td>
-                    <td className="px-3 py-2 text-right">
-                      {formatPct(row.atr_pct)}
-                    </td>
+                    <td className="px-3 py-2 text-right text-slate-200">${formatNum(row.close, 2)}</td>
+                    <td className="px-3 py-2 text-right">{formatNum(row.rsi, 1)}</td>
+                    <td className="px-3 py-2 text-right">{formatNum(row.vol_ratio, 2)}x</td>
+                    <td className="px-3 py-2 text-right">{formatPct(row.atr_pct)}</td>
                     <td
                       className={`px-3 py-2 text-right ${
-                        row.ret_5d > 0
-                          ? "text-emerald-400"
-                          : row.ret_5d < 0
-                          ? "text-rose-400"
-                          : "text-slate-300"
+                        row.ret_5d > 0 ? "text-emerald-400" : row.ret_5d < 0 ? "text-rose-400" : "text-slate-300"
                       }`}
                     >
                       {formatPct(row.ret_5d)}
                     </td>
                     <td
                       className={`px-3 py-2 text-right ${
-                        row.ret_20d > 0
-                          ? "text-emerald-400"
-                          : row.ret_20d < 0
-                          ? "text-rose-400"
-                          : "text-slate-300"
+                        row.ret_20d > 0 ? "text-emerald-400" : row.ret_20d < 0 ? "text-rose-400" : "text-slate-300"
                       }`}
                     >
                       {formatPct(row.ret_20d)}
                     </td>
                     <td className="px-3 py-2">
                       <div className="flex flex-wrap gap-1">
-                        {(row.tags || []).map((tag) => (
-                          <span
-                            key={tag}
-                            className="rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-medium text-emerald-300 border border-emerald-500/30"
-                          >
-                            {tag}
-                          </span>
-                        ))}
-                        {(!row.tags || row.tags.length === 0) && (
+                        {row.tags.length > 0 ? (
+                          row.tags.map((tag) => (
+                            <span
+                              key={tag}
+                              className="rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-medium text-emerald-300 border border-emerald-500/30"
+                            >
+                              {tag}
+                            </span>
+                          ))
+                        ) : (
                           <span className="text-xs text-slate-500">-</span>
                         )}
                       </div>
@@ -388,14 +340,12 @@ export default function Home() {
         )}
 
         {data && filteredResults.length === 0 && !loading && !error && (
-          <p className="text-sm text-slate-400 mt-4">
-            No rows match your current filters.
-          </p>
+          <p className="text-sm text-slate-400 mt-4">No rows match your current filters.</p>
         )}
 
         <p className="mt-6 text-xs text-slate-500">
-          Scores are a composite of trend, RSI, recent returns, volume, and
-          volatility computed in your Python/FastAPI backend.
+          Scores are a composite of trend, RSI, recent returns, volume, and volatility computed in
+          your Python/FastAPI backend.
         </p>
       </div>
 
@@ -403,26 +353,16 @@ export default function Home() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
           <div className="w-full max-w-xl rounded-xl bg-slate-950 border border-slate-800 p-4 shadow-lg shadow-emerald-500/20">
             <div className="flex items-center justify-between mb-3">
-              <h2 className="text-lg font-semibold">
-                {selectedTicker} – Price History
-              </h2>
-              <button
-                onClick={closeChart}
-                className="text-slate-400 hover:text-slate-100 text-sm"
-              >
+              <h2 className="text-lg font-semibold">{selectedTicker} – Price History</h2>
+              <button onClick={closeChart} className="text-slate-400 hover:text-slate-100 text-sm">
                 Close
               </button>
             </div>
 
-            {historyLoading && (
-              <p className="text-sm text-slate-400">Loading chart…</p>
-            )}
+            {historyLoading && <p className="text-sm text-slate-400">Loading chart…</p>}
+            {historyError && <p className="text-sm text-red-400">{historyError}</p>}
 
-            {historyError && (
-              <p className="text-sm text-red-400">{historyError}</p>
-            )}
-
-            {history && history.points && history.points.length > 0 && (
+            {history && history.points.length > 0 && (
               <div className="mt-2">
                 <Line
                   data={{
@@ -432,18 +372,17 @@ export default function Home() {
                         label: "Close",
                         data: history.points.map((p) => p.close),
                         borderWidth: 2,
-                        borderColor: "rgba(16, 185, 129, 1)",       // bright emerald line
-                        backgroundColor: "rgba(16, 185, 129, 0.15)", // subtle fill under line
+                        borderColor: "rgba(16, 185, 129, 1)",
+                        backgroundColor: "rgba(16, 185, 129, 0.15)",
                         tension: 0.3,
                         pointRadius: 0,
+                        fill: true,
                       },
                     ],
                   }}
                   options={{
                     responsive: true,
-                    plugins: {
-                      legend: { display: false },
-                    },
+                    plugins: { legend: { display: false } },
                     scales: {
                       x: {
                         ticks: { maxTicksLimit: 6, color: "#9ca3af" },
@@ -459,15 +398,9 @@ export default function Home() {
               </div>
             )}
 
-            {history &&
-              history.points &&
-              history.points.length === 0 &&
-              !historyLoading &&
-              !historyError && (
-                <p className="text-sm text-slate-400">
-                  No history data available for this ticker.
-                </p>
-              )}
+            {history && history.points.length === 0 && !historyLoading && !historyError && (
+              <p className="text-sm text-slate-400">No history data available for this ticker.</p>
+            )}
           </div>
         </div>
       )}
