@@ -329,7 +329,26 @@ export default function Home() {
           <p className="text-sm text-slate-400">No data yet. Click Refresh to load signals.</p>
         )}
 
-        {loading && <p className="text-sm text-slate-400 mb-3">Loading signals…</p>}
+        {loading && (
+          <div className="rounded-xl border border-slate-800 bg-slate-900/40 overflow-hidden">
+            <div className="bg-slate-900/70 border-b border-slate-800 px-3 py-2 flex gap-6">
+              {Array.from({ length: 11 }).map((_, i) => (
+                <div key={i} className="h-3 rounded bg-slate-700/60 animate-pulse" style={{ width: `${[24, 40, 32, 36, 24, 36, 28, 24, 28, 60, 28][i]}px` }} />
+              ))}
+            </div>
+            {Array.from({ length: 8 }).map((_, row) => (
+              <div key={row} className="border-t border-slate-800/70 px-3 py-2.5 flex gap-6 items-center">
+                {Array.from({ length: 11 }).map((_, col) => (
+                  <div key={col} className="h-3 rounded animate-pulse" style={{
+                    width: `${[16, 36, 28, 40, 24, 32, 32, 28, 28, 72, 36][col]}px`,
+                    backgroundColor: col === 2 ? "rgba(16,185,129,0.2)" : "rgba(100,116,139,0.3)",
+                    animationDelay: `${row * 60}ms`,
+                  }} />
+                ))}
+              </div>
+            ))}
+          </div>
+        )}
 
         {data && filteredResults.length > 0 && (
           <div className="overflow-x-auto rounded-xl border border-slate-800 bg-slate-900/40 shadow-lg shadow-emerald-500/5">
@@ -436,7 +455,13 @@ export default function Home() {
           <h2 className="text-lg font-semibold mb-3 flex items-center gap-2">
             <span className="text-yellow-400">★</span> Watchlist
           </h2>
-          {watchlistLoading && <p className="text-sm text-slate-400">Loading…</p>}
+          {watchlistLoading && (
+            <div className="space-y-2">
+              {Array.from({ length: 3 }).map((_, i) => (
+                <div key={i} className="h-8 rounded-lg bg-slate-800/60 animate-pulse" style={{ animationDelay: `${i * 80}ms` }} />
+              ))}
+            </div>
+          )}
           {!watchlistLoading && watchlist.length === 0 && (
             <p className="text-sm text-slate-500">
               No tickers watched yet — click ★ on any row above.
@@ -512,7 +537,16 @@ export default function Home() {
             {/* Price tab */}
             {modalTab === "price" && (
               <>
-                {historyLoading && <p className="text-sm text-slate-400">Loading chart…</p>}
+                {historyLoading && (
+                  <div className="space-y-2 mt-1">
+                    <div className="h-40 rounded-lg bg-slate-800/60 animate-pulse" />
+                    <div className="flex justify-between">
+                      {Array.from({ length: 6 }).map((_, i) => (
+                        <div key={i} className="h-2 w-10 rounded bg-slate-700/50 animate-pulse" />
+                      ))}
+                    </div>
+                  </div>
+                )}
                 {historyError && <p className="text-sm text-red-400">{historyError}</p>}
                 {history && history.points.length > 0 && (
                   <Line
@@ -548,7 +582,16 @@ export default function Home() {
             {/* Score tab */}
             {modalTab === "score" && (
               <>
-                {scoreLoading && <p className="text-sm text-slate-400">Loading score history…</p>}
+                {scoreLoading && (
+                  <div className="space-y-2 mt-1">
+                    <div className="h-40 rounded-lg bg-slate-800/60 animate-pulse" />
+                    <div className="flex justify-between">
+                      {Array.from({ length: 6 }).map((_, i) => (
+                        <div key={i} className="h-2 w-10 rounded bg-slate-700/50 animate-pulse" />
+                      ))}
+                    </div>
+                  </div>
+                )}
                 {scoreError && <p className="text-sm text-red-400">{scoreError}</p>}
                 {scoreHistory && scoreHistory.points.length > 0 && (
                   <Line
