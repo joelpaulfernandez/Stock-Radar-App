@@ -1,6 +1,8 @@
 import os
 import math
+import time
 import argparse
+from datetime import datetime, timedelta
 from typing import List, Dict, Any, Optional
 
 import numpy as np
@@ -12,6 +14,30 @@ _TWELVE_BASE = "https://api.twelvedata.com"
 
 _session = requests.Session()
 _session.headers.update({"User-Agent": "SignalRadar/1.0"})
+
+# Rate limiter: max 7 calls/60s (leave 1 buffer under free-tier limit of 8)
+_call_timestamps: List[float] = []
+_RATE_LIMIT = 7
+_RATE_WINDOW = 61.0
+
+# In-memory cache: ticker_days -> (DataFrame, expires_at)
+_df_cache: Dict[str, tuple] = {}
+_CACHE_TTL = 600  # 10 minutes
+
+
+def _rate_limited_get(url: str, params: dict) -> requests.Response:
+    global _call_timestamps
+    now = time.time()
+    _call_timestamps = [t for t in _call_timestamps if now - t < _RATE_WINDOW]
+    if len(_call_timestamps) >= _RATE_LIMIT:
+        wait = _RATE_WINDOW - (now - _call_timestamps[0]) + 0.1
+        if wait > 0:
+            print(f"[RATE] sleeping {wait:.1f}s")
+            time.sleep(wait)
+        _call_timestamps = [t for t in _call_timestamps if time.time() - t < _RATE_WINDOW]
+    resp = _session.get(url, params=params, timeout=20)
+    _call_timestamps.append(time.time())
+    return resp
 
 
 # -----------------------------
@@ -39,9 +65,16 @@ def compute_atr(high: pd.Series, low: pd.Series, close: pd.Series, period: int =
 # -----------------------------
 
 def fetch_history(ticker: str, days: int = 365) -> pd.DataFrame:
+    cache_key = f"{ticker}_{days}"
+    if cache_key in _df_cache:
+        df, expires = _df_cache[cache_key]
+        if datetime.now() < expires:
+            print(f"[CACHE] hit {ticker}")
+            return df
+
     outputsize = min(days, 5000)
     try:
-        resp = _session.get(
+        resp = _rate_limited_get(
             f"{_TWELVE_BASE}/time_series",
             params={
                 "symbol": ticker,
@@ -49,7 +82,6 @@ def fetch_history(ticker: str, days: int = 365) -> pd.DataFrame:
                 "outputsize": outputsize,
                 "apikey": TWELVE_DATA_API_KEY,
             },
-            timeout=15,
         )
         data = resp.json()
     except Exception as e:
@@ -84,6 +116,7 @@ def fetch_history(ticker: str, days: int = 365) -> pd.DataFrame:
     df["RET_5D"] = df["Close"].pct_change(5)
     df["RET_20D"] = df["Close"].pct_change(20)
     df.dropna(inplace=True)
+    _df_cache[cache_key] = (df, datetime.now() + timedelta(seconds=_CACHE_TTL))
     return df
 
 

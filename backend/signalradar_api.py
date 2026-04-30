@@ -5,7 +5,7 @@ import requests
 from fastapi import FastAPI, Query
 from fastapi.middleware.cors import CORSMiddleware
 
-from signalradar import run_screener, DEFAULT_TICKERS, fetch_history, _session
+from signalradar import run_screener, DEFAULT_TICKERS, fetch_history, _session, _rate_limited_get
 
 TWELVE_DATA_API_KEY = os.getenv("TWELVE_DATA_API_KEY", "")
 _TWELVE_BASE = "https://api.twelvedata.com"
@@ -50,7 +50,7 @@ def get_history(
 ):
     symbol = ticker.upper()
     try:
-        resp = _session.get(
+        resp = _rate_limited_get(
             f"{_TWELVE_BASE}/time_series",
             params={
                 "symbol": symbol,
@@ -58,7 +58,6 @@ def get_history(
                 "outputsize": min(days, 5000),
                 "apikey": TWELVE_DATA_API_KEY,
             },
-            timeout=15,
         )
         data = resp.json()
     except Exception as e:
