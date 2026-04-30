@@ -83,8 +83,9 @@ def debug_ticker(ticker: str):
             timeout=15,
         )
         data = resp.json()
-        return {"ticker": symbol, "status": data.get("status"), "has_values": "values" in data,
-                "rows": len(data.get("values", [])), "sample": data.get("values", [])[:2]}
+        return {"ticker": symbol, "status": data.get("status"), "message": data.get("message"),
+                "has_values": "values" in data, "rows": len(data.get("values", [])),
+                "sample": data.get("values", [])[:2], "api_key_set": bool(TWELVE_DATA_API_KEY)}
     except Exception as e:
         return {"ticker": symbol, "error": str(e)}
 
