@@ -5,7 +5,7 @@ from fastapi import FastAPI, Query
 from fastapi.middleware.cors import CORSMiddleware
 
 from signalradar import run_screener, DEFAULT_TICKERS, fetch_history, _session, _rate_limited_get
-from database import init_db, save_snapshots, get_score_history
+from database import init_db, save_snapshots, get_score_history, get_watchlist, add_to_watchlist, remove_from_watchlist
 
 TWELVE_DATA_API_KEY = os.getenv("TWELVE_DATA_API_KEY", "")
 _TWELVE_BASE = "https://api.twelvedata.com"
@@ -51,6 +51,27 @@ def get_signals(
         except Exception as e:
             print(f"[DB] save_snapshots failed: {e}")
     return {"count": len(results), "tickers": tickers_list, "days": days, "limit": limit, "results": results}
+
+
+@app.get("/watchlist")
+def list_watchlist():
+    items = get_watchlist()
+    return {"watchlist": [{"ticker": r["ticker"], "added_at": r["added_at"].isoformat()} for r in items]}
+
+
+@app.post("/watchlist/{ticker}", status_code=201)
+def add_watchlist(ticker: str):
+    added = add_to_watchlist(ticker)
+    return {"ticker": ticker.upper(), "added": added}
+
+
+@app.delete("/watchlist/{ticker}")
+def delete_watchlist(ticker: str):
+    removed = remove_from_watchlist(ticker)
+    if not removed:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=404, detail=f"{ticker.upper()} not in watchlist")
+    return {"ticker": ticker.upper(), "removed": True}
 
 
 @app.get("/history/{ticker}/scores")

@@ -62,6 +62,15 @@ interface ScoreHistoryResponse {
   points: ScorePoint[];
 }
 
+interface WatchlistItem {
+  ticker: string;
+  added_at: string;
+}
+
+interface WatchlistResponse {
+  watchlist: WatchlistItem[];
+}
+
 // --- Helpers ---
 
 const formatPct = (v: number | null | undefined): string =>
@@ -79,6 +88,10 @@ export default function Home() {
   const [error, setError] = useState("");
   const [refreshKey, setRefreshKey] = useState(0);
   const [tickersText, setTickersText] = useState("");
+
+  const [activeTab, setActiveTab] = useState<"screener" | "watchlist">("screener");
+  const [watchlist, setWatchlist] = useState<WatchlistItem[]>([]);
+  const [watchlistLoading, setWatchlistLoading] = useState(false);
 
   const [minScore, setMinScore] = useState(0);
   const [rsiMin, setRsiMin] = useState(0);
@@ -170,6 +183,32 @@ export default function Home() {
     setScoreError("");
   };
 
+  const fetchWatchlist = async () => {
+    setWatchlistLoading(true);
+    try {
+      const res = await fetch(`${API_BASE}/watchlist`);
+      const json: WatchlistResponse = await res.json();
+      setWatchlist(json.watchlist);
+    } catch {
+      // silent — watchlist is non-critical
+    } finally {
+      setWatchlistLoading(false);
+    }
+  };
+
+  useEffect(() => { fetchWatchlist(); }, []);
+
+  const isWatched = (ticker: string) => watchlist.some((w) => w.ticker === ticker);
+
+  const toggleWatch = async (ticker: string) => {
+    if (isWatched(ticker)) {
+      await fetch(`${API_BASE}/watchlist/${ticker}`, { method: "DELETE" });
+    } else {
+      await fetch(`${API_BASE}/watchlist/${ticker}`, { method: "POST" });
+    }
+    fetchWatchlist();
+  };
+
   return (
     <main className="min-h-screen bg-slate-950 text-slate-100">
       <div className="max-w-6xl mx-auto px-4 py-8">
@@ -177,6 +216,7 @@ export default function Home() {
           <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
             <div>
               <h1 className="text-3xl font-semibold tracking-tight">SignalRadar</h1>
+
               <p className="text-slate-400 mt-1">
                 Momentum &amp; volatility screener powered by your FastAPI backend.
               </p>
@@ -355,12 +395,25 @@ export default function Home() {
                       </div>
                     </td>
                     <td className="px-3 py-2 text-right">
-                      <button
-                        onClick={() => openChart(row.ticker)}
-                        className="text-xs rounded-md border border-emerald-500/40 px-2 py-1 text-emerald-300 hover:bg-emerald-500/10"
-                      >
-                        View
-                      </button>
+                      <div className="flex items-center justify-end gap-1">
+                        <button
+                          onClick={() => toggleWatch(row.ticker)}
+                          title={isWatched(row.ticker) ? "Remove from watchlist" : "Add to watchlist"}
+                          className={`text-sm px-1.5 py-1 rounded-md border transition-colors ${
+                            isWatched(row.ticker)
+                              ? "border-yellow-500/60 text-yellow-400 hover:bg-yellow-500/10"
+                              : "border-slate-600 text-slate-500 hover:text-yellow-400 hover:border-yellow-500/40"
+                          }`}
+                        >
+                          ★
+                        </button>
+                        <button
+                          onClick={() => openChart(row.ticker)}
+                          className="text-xs rounded-md border border-emerald-500/40 px-2 py-1 text-emerald-300 hover:bg-emerald-500/10"
+                        >
+                          View
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -377,6 +430,56 @@ export default function Home() {
           Scores are a composite of trend, RSI, recent returns, volume, and volatility computed in
           your Python/FastAPI backend.
         </p>
+
+        {/* Watchlist panel */}
+        <div className="mt-10">
+          <h2 className="text-lg font-semibold mb-3 flex items-center gap-2">
+            <span className="text-yellow-400">★</span> Watchlist
+          </h2>
+          {watchlistLoading && <p className="text-sm text-slate-400">Loading…</p>}
+          {!watchlistLoading && watchlist.length === 0 && (
+            <p className="text-sm text-slate-500">
+              No tickers watched yet — click ★ on any row above.
+            </p>
+          )}
+          {watchlist.length > 0 && (
+            <div className="rounded-xl border border-slate-800 bg-slate-900/40 overflow-x-auto">
+              <table className="min-w-full text-sm">
+                <thead>
+                  <tr className="bg-slate-900/70 border-b border-slate-800">
+                    <th className="px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-slate-400">Ticker</th>
+                    <th className="px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-slate-400">Added</th>
+                    <th className="px-3 py-2 text-right text-xs font-semibold uppercase tracking-wide text-slate-400">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {watchlist.map((item) => (
+                    <tr key={item.ticker} className="border-t border-slate-800/70 hover:bg-slate-900/70">
+                      <td className="px-3 py-2 font-semibold text-slate-100">{item.ticker}</td>
+                      <td className="px-3 py-2 text-slate-400 text-xs">
+                        {new Date(item.added_at).toLocaleDateString()}
+                      </td>
+                      <td className="px-3 py-2 text-right flex items-center justify-end gap-1">
+                        <button
+                          onClick={() => openChart(item.ticker)}
+                          className="text-xs rounded-md border border-emerald-500/40 px-2 py-1 text-emerald-300 hover:bg-emerald-500/10"
+                        >
+                          View
+                        </button>
+                        <button
+                          onClick={() => toggleWatch(item.ticker)}
+                          className="text-xs rounded-md border border-red-500/40 px-2 py-1 text-red-400 hover:bg-red-500/10"
+                        >
+                          Remove
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
       </div>
 
       {selectedTicker && (
