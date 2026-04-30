@@ -50,6 +50,18 @@ interface HistoryResponse {
   points: HistoryPoint[];
 }
 
+interface ScorePoint {
+  date: string;
+  score: number;
+  rsi: number | null;
+  close: number | null;
+}
+
+interface ScoreHistoryResponse {
+  ticker: string;
+  points: ScorePoint[];
+}
+
 // --- Helpers ---
 
 const formatPct = (v: number | null | undefined): string =>
@@ -75,9 +87,13 @@ export default function Home() {
   const [requireUptrend, setRequireUptrend] = useState(false);
 
   const [selectedTicker, setSelectedTicker] = useState<string | null>(null);
+  const [modalTab, setModalTab] = useState<"price" | "score">("price");
   const [history, setHistory] = useState<HistoryResponse | null>(null);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historyError, setHistoryError] = useState("");
+  const [scoreHistory, setScoreHistory] = useState<ScoreHistoryResponse | null>(null);
+  const [scoreLoading, setScoreLoading] = useState(false);
+  const [scoreError, setScoreError] = useState("");
 
   useEffect(() => {
     async function fetchSignals() {
@@ -119,25 +135,39 @@ export default function Home() {
 
   const openChart = async (ticker: string) => {
     setSelectedTicker(ticker);
+    setModalTab("price");
     setHistory(null);
     setHistoryError("");
     setHistoryLoading(true);
-    try {
-      const res = await fetch(`${API_BASE}/history/${ticker}?days=120`);
-      if (!res.ok) throw new Error(`Failed to load history (${res.status})`);
-      const json: HistoryResponse = await res.json();
-      setHistory(json);
-    } catch (e) {
-      setHistoryError(e instanceof Error ? e.message : "Error loading history");
-    } finally {
-      setHistoryLoading(false);
+    setScoreHistory(null);
+    setScoreError("");
+
+    const [priceRes, scoreRes] = await Promise.allSettled([
+      fetch(`${API_BASE}/history/${ticker}?days=120`),
+      fetch(`${API_BASE}/history/${ticker}/scores?limit=90`),
+    ]);
+
+    if (priceRes.status === "fulfilled" && priceRes.value.ok) {
+      setHistory(await priceRes.value.json());
+    } else {
+      setHistoryError("Failed to load price history");
     }
+    setHistoryLoading(false);
+
+    if (scoreRes.status === "fulfilled" && scoreRes.value.ok) {
+      setScoreHistory(await scoreRes.value.json());
+    } else {
+      setScoreError("Failed to load score history");
+    }
+    setScoreLoading(false);
   };
 
   const closeChart = () => {
     setSelectedTicker(null);
     setHistory(null);
     setHistoryError("");
+    setScoreHistory(null);
+    setScoreError("");
   };
 
   return (
@@ -353,22 +383,39 @@ export default function Home() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
           <div className="w-full max-w-xl rounded-xl bg-slate-950 border border-slate-800 p-4 shadow-lg shadow-emerald-500/20">
             <div className="flex items-center justify-between mb-3">
-              <h2 className="text-lg font-semibold">{selectedTicker} – Price History</h2>
+              <h2 className="text-lg font-semibold">{selectedTicker}</h2>
               <button onClick={closeChart} className="text-slate-400 hover:text-slate-100 text-sm">
                 Close
               </button>
             </div>
 
-            {historyLoading && <p className="text-sm text-slate-400">Loading chart…</p>}
-            {historyError && <p className="text-sm text-red-400">{historyError}</p>}
+            {/* Tabs */}
+            <div className="flex gap-2 mb-4 border-b border-slate-800">
+              {(["price", "score"] as const).map((tab) => (
+                <button
+                  key={tab}
+                  onClick={() => setModalTab(tab)}
+                  className={`px-3 py-1.5 text-sm font-medium capitalize border-b-2 transition-colors ${
+                    modalTab === tab
+                      ? "border-emerald-500 text-emerald-400"
+                      : "border-transparent text-slate-400 hover:text-slate-200"
+                  }`}
+                >
+                  {tab === "price" ? "Price History" : "Score History"}
+                </button>
+              ))}
+            </div>
 
-            {history && history.points.length > 0 && (
-              <div className="mt-2">
-                <Line
-                  data={{
-                    labels: history.points.map((p) => p.date),
-                    datasets: [
-                      {
+            {/* Price tab */}
+            {modalTab === "price" && (
+              <>
+                {historyLoading && <p className="text-sm text-slate-400">Loading chart…</p>}
+                {historyError && <p className="text-sm text-red-400">{historyError}</p>}
+                {history && history.points.length > 0 && (
+                  <Line
+                    data={{
+                      labels: history.points.map((p) => p.date),
+                      datasets: [{
                         label: "Close",
                         data: history.points.map((p) => p.close),
                         borderWidth: 2,
@@ -377,29 +424,60 @@ export default function Home() {
                         tension: 0.3,
                         pointRadius: 0,
                         fill: true,
+                      }],
+                    }}
+                    options={{
+                      responsive: true,
+                      plugins: { legend: { display: false } },
+                      scales: {
+                        x: { ticks: { maxTicksLimit: 6, color: "#9ca3af" }, grid: { display: false } },
+                        y: { ticks: { color: "#9ca3af" }, grid: { color: "rgba(148,163,184,0.2)" } },
                       },
-                    ],
-                  }}
-                  options={{
-                    responsive: true,
-                    plugins: { legend: { display: false } },
-                    scales: {
-                      x: {
-                        ticks: { maxTicksLimit: 6, color: "#9ca3af" },
-                        grid: { display: false },
-                      },
-                      y: {
-                        ticks: { color: "#9ca3af" },
-                        grid: { color: "rgba(148,163,184,0.2)" },
-                      },
-                    },
-                  }}
-                />
-              </div>
+                    }}
+                  />
+                )}
+                {history && history.points.length === 0 && !historyLoading && !historyError && (
+                  <p className="text-sm text-slate-400">No price data available.</p>
+                )}
+              </>
             )}
 
-            {history && history.points.length === 0 && !historyLoading && !historyError && (
-              <p className="text-sm text-slate-400">No history data available for this ticker.</p>
+            {/* Score tab */}
+            {modalTab === "score" && (
+              <>
+                {scoreLoading && <p className="text-sm text-slate-400">Loading score history…</p>}
+                {scoreError && <p className="text-sm text-red-400">{scoreError}</p>}
+                {scoreHistory && scoreHistory.points.length > 0 && (
+                  <Line
+                    data={{
+                      labels: scoreHistory.points.map((p) => p.date),
+                      datasets: [{
+                        label: "Score",
+                        data: scoreHistory.points.map((p) => p.score),
+                        borderWidth: 2,
+                        borderColor: "rgba(99, 102, 241, 1)",
+                        backgroundColor: "rgba(99, 102, 241, 0.15)",
+                        tension: 0.3,
+                        pointRadius: 2,
+                        fill: true,
+                      }],
+                    }}
+                    options={{
+                      responsive: true,
+                      plugins: { legend: { display: false } },
+                      scales: {
+                        x: { ticks: { maxTicksLimit: 6, color: "#9ca3af" }, grid: { display: false } },
+                        y: { ticks: { color: "#9ca3af" }, grid: { color: "rgba(148,163,184,0.2)" } },
+                      },
+                    }}
+                  />
+                )}
+                {scoreHistory && scoreHistory.points.length === 0 && !scoreLoading && !scoreError && (
+                  <p className="text-sm text-slate-400">
+                    No score history yet — runs every time /signals is called.
+                  </p>
+                )}
+              </>
             )}
           </div>
         </div>

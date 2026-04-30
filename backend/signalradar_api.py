@@ -1,11 +1,11 @@
 import os
 from typing import List, Optional
 
-import requests
 from fastapi import FastAPI, Query
 from fastapi.middleware.cors import CORSMiddleware
 
 from signalradar import run_screener, DEFAULT_TICKERS, fetch_history, _session, _rate_limited_get
+from database import init_db, save_snapshots, get_score_history
 
 TWELVE_DATA_API_KEY = os.getenv("TWELVE_DATA_API_KEY", "")
 _TWELVE_BASE = "https://api.twelvedata.com"
@@ -13,7 +13,7 @@ _TWELVE_BASE = "https://api.twelvedata.com"
 app = FastAPI(
     title="SignalRadar API",
     description="Momentum & signal screener for stocks",
-    version="0.2.0",
+    version="0.3.0",
 )
 
 _raw_origins = os.getenv("ALLOWED_ORIGINS", "*")
@@ -28,6 +28,11 @@ app.add_middleware(
 )
 
 
+@app.on_event("startup")
+def on_startup():
+    init_db()
+
+
 @app.get("/signals")
 def get_signals(
     tickers: Optional[str] = Query(None, description="Comma-separated tickers. Omit for default large caps."),
@@ -40,7 +45,30 @@ def get_signals(
         else DEFAULT_TICKERS
     )
     results = run_screener(tickers=tickers_list, days=days, limit=limit)
+    if results:
+        try:
+            save_snapshots(results)
+        except Exception as e:
+            print(f"[DB] save_snapshots failed: {e}")
     return {"count": len(results), "tickers": tickers_list, "days": days, "limit": limit, "results": results}
+
+
+@app.get("/history/{ticker}/scores")
+def get_score_history_endpoint(
+    ticker: str,
+    limit: int = Query(90, ge=1, le=500),
+):
+    rows = get_score_history(ticker.upper(), limit)
+    points = [
+        {
+            "date": row["captured_at"].strftime("%Y-%m-%d %H:%M"),
+            "score": row["score"],
+            "rsi": row["rsi"],
+            "close": row["close"],
+        }
+        for row in rows
+    ]
+    return {"ticker": ticker.upper(), "points": points}
 
 
 @app.get("/history/{ticker}")
@@ -91,4 +119,4 @@ def debug_ticker(ticker: str):
 
 @app.get("/")
 def root():
-    return {"message": "Welcome to SignalRadar API", "endpoints": ["/signals", "/history/{ticker}"]}
+    return {"message": "Welcome to SignalRadar API", "endpoints": ["/signals", "/history/{ticker}", "/history/{ticker}/scores"]}
