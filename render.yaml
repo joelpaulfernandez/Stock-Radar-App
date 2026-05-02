@@ -10,4 +10,6 @@ services:
         value: "3.11.9"
       - key: ALLOWED_ORIGINS
         value: "*"
+      - key: GROQ_API_KEY
+        sync: false
     plan: free

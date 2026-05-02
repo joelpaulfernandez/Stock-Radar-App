@@ -3,9 +3,13 @@ from typing import List, Optional
 
 from fastapi import FastAPI, Query
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
 
 from signalradar import run_screener, DEFAULT_TICKERS, fetch_history, _session, _rate_limited_get
-from database import init_db, save_snapshots, get_score_history, get_watchlist, add_to_watchlist, remove_from_watchlist
+from database import (
+    init_db, save_snapshots, get_score_history,
+    get_watchlist, add_to_watchlist, remove_from_watchlist,
+)
 
 TWELVE_DATA_API_KEY = os.getenv("TWELVE_DATA_API_KEY", "")
 _TWELVE_BASE = "https://api.twelvedata.com"
@@ -13,7 +17,7 @@ _TWELVE_BASE = "https://api.twelvedata.com"
 app = FastAPI(
     title="SignalRadar API",
     description="Momentum & signal screener for stocks",
-    version="0.3.0",
+    version="0.4.0",
 )
 
 _raw_origins = os.getenv("ALLOWED_ORIGINS", "*")
@@ -47,7 +51,13 @@ def get_signals(
     results = run_screener(tickers=tickers_list, days=days, limit=limit)
     if results:
         try:
-            save_snapshots(results)
+            snapshot_ids = save_snapshots(results)
+            if snapshot_ids:
+                try:
+                    from rag_agent import embed_and_store_snapshots
+                    embed_and_store_snapshots(results, snapshot_ids)
+                except Exception as e:
+                    print(f"[RAG] embedding pipeline failed: {e}")
         except Exception as e:
             print(f"[DB] save_snapshots failed: {e}")
     return {"count": len(results), "tickers": tickers_list, "days": days, "limit": limit, "results": results}
@@ -138,6 +148,26 @@ def debug_ticker(ticker: str):
         return {"ticker": symbol, "error": str(e)}
 
 
+class RAGRequest(BaseModel):
+    question: str
+
+
+@app.post("/rag/query")
+async def rag_query(body: RAGRequest):
+    from fastapi import HTTPException
+    if not body.question.strip():
+        raise HTTPException(status_code=400, detail="question must not be empty")
+    from rag_agent import run_agent
+    answer = await run_agent(body.question.strip())
+    return {"question": body.question, "answer": answer}
+
+
 @app.get("/")
 def root():
-    return {"message": "Welcome to SignalRadar API", "endpoints": ["/signals", "/history/{ticker}", "/history/{ticker}/scores"]}
+    return {
+        "message": "Welcome to SignalRadar API",
+        "endpoints": [
+            "/signals", "/history/{ticker}", "/history/{ticker}/scores",
+            "/watchlist", "/rag/query",
+        ],
+    }

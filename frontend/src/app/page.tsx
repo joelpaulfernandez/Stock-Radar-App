@@ -93,6 +93,11 @@ export default function Home() {
   const [watchlist, setWatchlist] = useState<WatchlistItem[]>([]);
   const [watchlistLoading, setWatchlistLoading] = useState(false);
 
+  const [ragQuestion, setRagQuestion] = useState("");
+  const [ragLoading, setRagLoading] = useState(false);
+  const [ragAnswer, setRagAnswer] = useState<string | null>(null);
+  const [ragError, setRagError] = useState("");
+
   const [minScore, setMinScore] = useState(0);
   const [rsiMin, setRsiMin] = useState(0);
   const [rsiMax, setRsiMax] = useState(100);
@@ -199,6 +204,27 @@ export default function Home() {
   useEffect(() => { fetchWatchlist(); }, []);
 
   const isWatched = (ticker: string) => watchlist.some((w) => w.ticker === ticker);
+
+  const handleRagQuery = async () => {
+    if (!ragQuestion.trim() || ragLoading) return;
+    setRagLoading(true);
+    setRagAnswer(null);
+    setRagError("");
+    try {
+      const res = await fetch(`${API_BASE}/rag/query`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ question: ragQuestion }),
+      });
+      if (!res.ok) throw new Error(`API error: ${res.status}`);
+      const json = await res.json();
+      setRagAnswer(json.answer);
+    } catch (err) {
+      setRagError(err instanceof Error ? err.message : "Query failed");
+    } finally {
+      setRagLoading(false);
+    }
+  };
 
   const toggleWatch = async (ticker: string) => {
     if (isWatched(ticker)) {
@@ -449,6 +475,52 @@ export default function Home() {
           Scores are a composite of trend, RSI, recent returns, volume, and volatility computed in
           your Python/FastAPI backend.
         </p>
+
+        {/* RAG Chat */}
+        <div className="mt-10">
+          <h2 className="text-lg font-semibold mb-1 flex items-center gap-2">
+            <span className="text-violet-400">⚡</span> Ask SignalRadar
+          </h2>
+          <p className="text-xs text-slate-500 mb-3">
+            pgvector semantic search · LangGraph ReAct agent · Claude Haiku
+          </p>
+          <div className="flex gap-2">
+            <input
+              type="text"
+              value={ragQuestion}
+              onChange={(e) => setRagQuestion(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && ragQuestion.trim() && !ragLoading) {
+                  handleRagQuery();
+                }
+              }}
+              placeholder='e.g. "Why is NVDA showing strong momentum?" or "Which stocks are bearish?"'
+              disabled={ragLoading}
+              className="flex-1 rounded-md bg-slate-900 border border-slate-700 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500 disabled:opacity-60"
+            />
+            <button
+              onClick={handleRagQuery}
+              disabled={ragLoading || !ragQuestion.trim()}
+              className="rounded-md bg-violet-600 px-4 py-2 text-sm font-medium text-white hover:bg-violet-500 focus:outline-none focus:ring-2 focus:ring-violet-500 disabled:opacity-60"
+            >
+              {ragLoading ? "Thinking…" : "Ask"}
+            </button>
+          </div>
+          {ragError && (
+            <p className="mt-2 text-sm text-red-400">{ragError}</p>
+          )}
+          {ragLoading && (
+            <div className="mt-3 space-y-2">
+              <div className="h-3 rounded bg-violet-500/20 animate-pulse w-3/4" />
+              <div className="h-3 rounded bg-violet-500/20 animate-pulse w-1/2" />
+            </div>
+          )}
+          {ragAnswer && !ragLoading && (
+            <div className="mt-3 rounded-xl border border-violet-500/30 bg-violet-500/5 px-4 py-3 text-sm text-slate-200 whitespace-pre-wrap leading-relaxed">
+              {ragAnswer}
+            </div>
+          )}
+        </div>
 
         {/* Watchlist panel */}
         <div className="mt-10">
