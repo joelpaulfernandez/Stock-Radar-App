@@ -70,6 +70,14 @@ RSS_FEEDS = [
     # NASA, DHS, DoE — big contract sources outside DoD
     {"name": "🇺🇸 NASA News",                 "url": "https://www.nasa.gov/rss/dyn/breaking_news.rss", "country": "US"},
     {"name": "🇺🇸 Dept of Energy News",       "url": "https://www.energy.gov/rss.xml", "country": "US"},
+    {"name": "🇺🇸 IBD Investing News",          "url": "https://feeds.feedburner.com/InvestingRss", "country": "US"},
+    {"name": "🇺🇸 IBD Business News",           "url": "https://feeds.feedburner.com/BusinessRss", "country": "US"},
+    {"name": "🇺🇸 IBD Economy News",            "url": "https://feeds.feedburner.com/EconomyRss", "country": "US"},
+    {"name": "🇺🇸 IBD Technology News",         "url": "https://feeds.feedburner.com/InternetTechnologyRss", "country": "US"},
+    {"name": "🇺🇸 IBD Management News",         "url": "https://feeds.feedburner.com/ManagementRss", "country": "US"},
+    {"name": "🇺🇸 IBD Politics News",           "url": "https://feeds.feedburner.com/PoliticRss", "country": "US"},
+    {"name": "🇺🇸 IBD Editorial News",          "url": "https://feeds.feedburner.com/EditorialRss", "country": "US"},
+    {"name": "🇺🇸 Yahoo Finance News",          "url": "https://finance.yahoo.com/news/rssindex", "country": "US"},
 ]
 
 # ─────────────────────────────────────────────
